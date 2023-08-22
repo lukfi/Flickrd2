@@ -18,14 +18,17 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="flickrd2lib.cpp">
-      <Filter>Resource Files</Filter>
+    <ClCompile Include="..\Common\Utils\CookieHacker\keyextractor.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\Common\Utils\CookieHacker\browserhacker.cpp">
-      <Filter>Resource Files</Filter>
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\Common\Utils\CookieHacker\keyextractor.cpp">
-      <Filter>Resource Files</Filter>
+    <ClCompile Include="flickrd2lib.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\Utils\UrlGet\networkcookies.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -36,6 +39,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Common\Utils\CookieHacker\keyextractor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Common\Utils\UrlGet\networkcookies.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

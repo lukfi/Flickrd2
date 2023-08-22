@@ -10,8 +10,8 @@ void LF::Flickrd2::LoadCookies(Browser_t browser)
     BrowserHacker hacker(BrowserHacker::Browser_t::Vivaldi);
     if (hacker.BrowserValid())
     {
-        hacker.GetCookies("%flickr.com");
-        SUCC("Loaded cookies");
+        auto cookies = hacker.GetCookies("%flickr.com");
+        SUCC("Loaded cookies: %d", cookies.Get().size());
     }
     else
     {
