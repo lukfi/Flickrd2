@@ -30,6 +30,12 @@
     <ClCompile Include="..\Common\Utils\UrlGet\networkcookies.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\Common\Utils\UrlGet\url.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\Utils\UrlGet\urlget.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="flickrd2lib.h">
@@ -42,6 +48,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Common\Utils\UrlGet\networkcookies.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Common\Utils\UrlGet\urlget.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Common\Utils\UrlGet\url.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
