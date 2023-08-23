@@ -20,13 +20,18 @@ public:
 
     void LoadCookies(Browser_t browser);
     void LoadApiKey();
+    void ListFriendUsers();
 
 private:
+    void OnRequestComplete(void* userData, LF::www::UrlGet::RequestResult_t res);
+    void OnRequestComplete_LoadApiKey(const std::string& resp);
+
     enum class InternalState_t
     {
         IDLE,
         LoadCookies,
-        LoadApiKey
+        LoadApiKey,
+        ListContacts
     };
 
     class StateGuard
@@ -55,6 +60,23 @@ private:
         Flickrd2* mApp;
         bool mValid {false};
     };
+
+    struct RootAuth
+    {
+        std::string mAppKey;
+        std::string mCSRF;
+        std::string mUserNSID;
+        std::string mUserName;
+        bool mSignedIn{ false };
+        void Reset()
+        {
+            mAppKey.clear();
+            mCSRF.clear();
+            mUserNSID.clear();
+            mUserName.clear();
+            mSignedIn = false;
+        }
+    } mRootAuth;
 
     std::shared_ptr<NetworkCookies> mCookies;
     std::shared_ptr<LF::www::UrlGet> mGet;
