@@ -1,5 +1,6 @@
 #include "networkcookies.h"
 #include "urlget.h"
+#include "xml/pugi/pugixml.h"
 
 #include <memory>
 
@@ -25,6 +26,7 @@ public:
 private:
     void OnRequestComplete(void* userData, LF::www::UrlGet::RequestResult_t res);
     void OnRequestComplete_LoadApiKey(const std::string& resp);
+    void OnRequestComplete_ListContacts(const std::string& resp);
 
     enum class InternalState_t
     {
@@ -77,6 +79,12 @@ private:
             mSignedIn = false;
         }
     } mRootAuth;
+
+    struct Contacts
+    {
+        bool mLoaded{ false };
+        pugi::xml_document mContacts;
+    } mContacts;
 
     std::shared_ptr<NetworkCookies> mCookies;
     std::shared_ptr<LF::www::UrlGet> mGet;

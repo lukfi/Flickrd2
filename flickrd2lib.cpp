@@ -109,8 +109,11 @@ void LF::Flickrd2::OnRequestComplete(void* userData, LF::www::UrlGet::RequestRes
     case InternalState_t::LoadApiKey:
         OnRequestComplete_LoadApiKey(data->mGet->GetResponse().mCurrentResponse);
         break;
+    case InternalState_t::ListContacts:
+        OnRequestComplete_ListContacts(data->mGet->GetResponse().mCurrentResponse);
+        break;
     default:
-        PRINT("===== RESPONSE ====\n%s\===================\n", data->mGet->GetResponse().mCurrentResponse.c_str());
+        PRINT("===== RESPONSE ====\n%s\n===================\n", data->mGet->GetResponse().mCurrentResponse.c_str());
     }
     delete data;
 }
@@ -153,6 +156,24 @@ void LF::Flickrd2::OnRequestComplete_LoadApiKey(const std::string& resp)
     }
 }
 
+void LF::Flickrd2::OnRequestComplete_ListContacts(const std::string& resp)
+{
+    if (mContacts.mContacts.load_string(resp.c_str()))
+    {
+        auto contacts = mContacts.mContacts.child("rsp").child("contacts");
+        SDEB("Contacts parsed OK count: %d", contacts.attribute("total").as_int());
+        for (pugi::xml_node c = contacts.child("contact"); c; c = c.next_sibling("contact"))
+        {
+            SDEB("-> %s", c.attribute("username").as_string());
+        }
+    }
+    else
+    {
+        SWARN("Failed to parse contacts.");
+    }
+
+}
+
 void LF::Flickrd2::LoadApiKey()
 {
     STATE(InternalState_t::LoadApiKey);
@@ -174,7 +195,7 @@ void LF::Flickrd2::ListFriendUsers()
     if (mRootAuth.mSignedIn)
     {
         std::stringstream request;
-        request << "https://api.flickr.com/services/rest?" << "method=flickr.contacts.getList" << "&csrf=" << mRootAuth.mCSRF << "&api_key=" << mRootAuth.mAppKey;
+        request << "https://api.flickr.com/services/rest?" << "method=flickr.contacts.getList" << "&format=rest&csrf=" << mRootAuth.mCSRF << "&api_key=" << mRootAuth.mAppKey;
 
         mGet = std::make_shared<LF::www::UrlGet>();
         
