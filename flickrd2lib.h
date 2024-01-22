@@ -22,18 +22,33 @@ public:
     void LoadCookies(Browser_t browser);
     void LoadApiKey();
     void ListFriendUsers();
+    void ListUsersAlbums(const std::string& userName = "");
+    void ListUserAlbumPhotos(const std::string& userName, const std::string& albumName);
+    std::string GetUsersNSID(const std::string& userName = "");
 
+    void FixFlickrFolder(std::string path);
 private:
+    std::string GetUsersAlbumId(const std::string& nsid, const std::string& albumName);
+    pugi::xml_document* LoadUserInfo(const std::string& nsid);
+
     void OnRequestComplete(void* userData, LF::www::UrlGet::RequestResult_t res);
     void OnRequestComplete_LoadApiKey(const std::string& resp);
     void OnRequestComplete_ListContacts(const std::string& resp);
+    void OnRequestComplete_ListAlbums(void* data);
+    void OnRequestComplete_ListAlbumPhotos(void* data);
+    void OnRequestComplete_GetNsid(const std::string& resp);
+    void OnRequestComplete_GetUserInfo(void* data);
 
     enum class InternalState_t
     {
         IDLE,
         LoadCookies,
         LoadApiKey,
-        ListContacts
+        ListContacts,
+        ListAlbums,
+        LoadAlbumPhotos,
+        GetUserNsid,
+        GetUserInfo
     };
 
     class StateGuard
@@ -84,7 +99,10 @@ private:
     {
         bool mLoaded{ false };
         pugi::xml_document mContacts;
+        std::map<std::string, pugi::xml_document> mNSID2AlbumList;
     } mContacts;
+
+    std::map<std::string, pugi::xml_document> mNSID2UserCache;
 
     std::shared_ptr<NetworkCookies> mCookies;
     std::shared_ptr<LF::www::UrlGet> mGet;
@@ -92,6 +110,12 @@ private:
     void SetState(InternalState_t state);
     std::mutex mStateLock;
     std::atomic<InternalState_t> mState;
+
+    struct
+    {
+        std::string string;
+        uint64_t number;
+    } mUrlGetExchange;
 
     friend class StateGuard;
 };
