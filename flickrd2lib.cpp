@@ -9,13 +9,25 @@ namespace Fd2 {
 
 #define ENABLE_SDEBUG
 #include "utils/screenlogger.h"
-//
-//#ifdef SDEB
-//#undef SDEB
-//#define SDEB(...)
-//#endif
+
+#if 0
+#ifdef SDEB
+#undef SDEB
+#define SDEB(...)
+#endif
+#endif 
 
 #define STATE(x) StateGuard s(this, x); if (!s.Valid()) return
+
+static bool IsNSID(const std::string& nsid)
+{
+    std::regex pattern("[0-9]+@N[0-9]{2}");
+    if (std::regex_match(nsid, pattern))
+    {
+        return true;
+    }
+    return false;
+}
 
 static std::string ParseFor(const std::string& str, const std::string& exp)
 {
@@ -40,6 +52,7 @@ public:
     std::shared_ptr<LF::www::UrlGet> mGet;
     std::string mRequest;
     std::string mNSID;
+    std::string mAlbumId;
 };
 
 void LF::Flickrd2::LoadCookies(Browser_t browser)
@@ -67,7 +80,15 @@ void LF::Flickrd2::LoadCookies(Browser_t browser)
 
         std::string cookie_accid;
         std::string cookie_epass;
-        std::string cookieSession = "118205923%3A31d9e76722e34be9e4ef8aaaf78faf51";
+        std::string cookieSession;// = "118205923%3A31d9e76722e34be9e4ef8aaaf78faf51";
+
+        if (false)
+        {
+            for (auto& c : mCookies->Get())
+            {
+                std::cout << c.second->GetName() << " :: " << c.second->GetValue() << std::endl;
+            }
+        }
 
         for (auto& c : mCookies->Get())
         {
@@ -122,7 +143,8 @@ void LF::Flickrd2::OnRequestComplete(void* userData, LF::www::UrlGet::RequestRes
         OnRequestComplete_ListAlbums(data);
         break;
     case InternalState_t::LoadAlbumPhotos:
-
+    case InternalState_t::LoadAllPhotos:
+        OnRequestComplete_ListAlbumPhotos(data);
         break;
     case InternalState_t::GetUserNsid:
         OnRequestComplete_GetNsid(data->mGet->GetResponse().mCurrentResponse);
@@ -130,8 +152,13 @@ void LF::Flickrd2::OnRequestComplete(void* userData, LF::www::UrlGet::RequestRes
     case InternalState_t::GetUserInfo:
         OnRequestComplete_GetUserInfo(data);
         break;
+    case InternalState_t::GetJOBfromUrl:
+        OnRequestComplete_GetJobFromUrl(data);
+        break;
     default:
-        PRINT("===== RESPONSE ====\n%s\n===================\n", data->mGet->GetResponse().mCurrentResponse.c_str());
+        PRINT("===== RESPONSE ====\n");
+        std::cout << data->mGet->GetResponse().mCurrentResponse;
+        PRINT("\n===================\n", data->mGet->GetResponse().mCurrentResponse.c_str());
     }
     delete data;
 }
@@ -183,7 +210,7 @@ void LF::Flickrd2::OnRequestComplete_ListContacts(const std::string& resp)
         SDEB("Contacts parsed OK count: %d", contacts.attribute("total").as_int());
         for (pugi::xml_node c = contacts.child("contact"); c; c = c.next_sibling("contact"))
         {
-            PRINT("-> %s [%s] (%s)\n", c.attribute("username").as_string(), c.attribute("realname").as_string(), c.attribute("nsid").as_string());
+            //PRINT("-> %s [%s] (%s)\n", c.attribute("username").as_string(), c.attribute("realname").as_string(), c.attribute("nsid").as_string());
         }
         mContacts.mLoaded = true;
     }
@@ -259,7 +286,7 @@ void LF::Flickrd2::OnRequestComplete_ListAlbums(void* data)
             for (pugi::xml_node c = userAlbumList.child("rsp").child("photosets").child("photoset"); c; c = c.next_sibling("photoset"))
             {
                 ++i;
-                PRINT("[% 4d] %s\n", i, c.child_value("title"));
+                PRINT("[% 4d] %s => %s\n", i, c.child_value("title"), c.attribute("id").as_string());
             }
         }
     }
@@ -271,7 +298,102 @@ void LF::Flickrd2::OnRequestComplete_ListAlbums(void* data)
 
 void LF::Flickrd2::OnRequestComplete_ListAlbumPhotos(void* data)
 {
+    GetData* getData = reinterpret_cast<GetData*>(data);
+    std::string resp = getData->mGet->GetResponse().mCurrentResponse;
+    bool parsingAlbum = !getData->mAlbumId.empty();
 
+    if (parsingAlbum)
+    {
+        if (mAlbumId2Photos.find(getData->mAlbumId) == mAlbumId2Photos.end())
+        {
+            SDEB("Creating Album Photos list for %s", getData->mAlbumId.c_str());
+            mAlbumId2Photos[getData->mAlbumId] = pugi::xml_document();
+        }
+        else
+        {
+            SDEB("Album Photos list for %s exists", getData->mAlbumId.c_str());
+            if (mUrlGetExchange.number == 1)
+            {
+                SDEB("Reseting old album photos list");
+                mAlbumId2Photos[getData->mAlbumId].reset();
+            }
+        }
+    }
+    else
+    {
+        if (mUserId2Photos.find(getData->mNSID) == mUserId2Photos.end())
+        {
+            SDEB("Creating User Photos list for %s", getData->mNSID.c_str());
+            mUserId2Photos[getData->mNSID] = pugi::xml_document();
+        }
+        else
+        {
+            SDEB("Photos list for %s exists", getData->mNSID.c_str());
+            if (mUrlGetExchange.number == 1)
+            {
+                SDEB("Reseting old photos list");
+                mUserId2Photos[getData->mNSID].reset();
+            }
+        }
+    }
+    pugi::xml_document& userPhotosList = parsingAlbum ? mAlbumId2Photos[getData->mAlbumId] : mUserId2Photos[getData->mNSID];
+    pugi::xml_document tempList;
+    pugi::xml_document* photos = (mUrlGetExchange.number == 1) ? &userPhotosList : &tempList;
+
+    if (photos->load_string(resp.c_str()))
+    {
+        auto childName = parsingAlbum ? "photoset" : "photos";
+        auto photoset = photos->child("rsp").child(childName);
+
+        SINFO("Photoset parsed OK total count: %d, page: %s/%s", photoset.attribute("total").as_int(), photoset.attribute("page").as_string(), photoset.attribute("pages").as_string());
+        int page = photoset.attribute("page").as_int(-1);
+        int pages = photoset.attribute("pages").as_int(-1);
+        if (page == -1 || pages == -1 || page != mUrlGetExchange.number)
+        {
+            SERR("OnRequestComplete_ListAlbumPhotos: wrong page");
+            mUrlGetExchange.number = 0;
+            return;
+        }
+
+        if (page > 1)
+        {
+            pugi::xml_node photoset2 = userPhotosList.child("rsp").child(childName);
+            for (pugi::xml_node child = tempList.child("rsp").child(childName).child("photo");
+                child;
+                child = child.next_sibling("photo"))
+            {
+                //SDEB("C -> %s", child.attribute("id").as_string());
+                //SDEB("C -> %s = %s", child.attribute("id").as_string(), child.child_value("title"));
+                //userAlbumList.child("rsp").child(childName).append_child(child);
+                photoset2.append_copy(child);
+            }
+        }
+
+        SINFO("Photos Count: %d", std::distance(userPhotosList.child("rsp").child(childName).children("photo").begin(), userPhotosList.child("rsp").child(childName).children("photo").end()));
+
+        if (page < pages)
+        {
+            ++page;
+            SINFO("Need new request for page: %d", page);
+            mUrlGetExchange.number = page;
+        }
+        else
+        {
+            SINFO("Request finalised");
+            mUrlGetExchange.number = 0;
+
+            int i = 0;
+            for (pugi::xml_node c = userPhotosList.child("rsp").child(childName).child("photo"); c; c = c.next_sibling("photo"))
+            {
+                ++i;
+                PRINT("[% 4d] %s = %s\n", i, c.attribute("title").as_string(), c.attribute("url_4k").as_string());
+            }
+        }
+    }
+    else
+    {
+        SWARN("Failed to parse album photos.");
+    }
 }
 
 void LF::Flickrd2::OnRequestComplete_GetNsid(const std::string& resp)
@@ -299,6 +421,39 @@ void LF::Flickrd2::OnRequestComplete_GetUserInfo(void* data)
     }
 }
 
+void LF::Flickrd2::OnRequestComplete_GetJobFromUrl(void* data)
+{
+    GetData* getData = reinterpret_cast<GetData*>(data);
+    std::string resp = getData->mGet->GetResponse().mCurrentResponse;
+    LF::re::RegExp reg("\"nsid\":\"([0-9]+@N[0-9]+)\"");
+    int r = reg.FindAll(resp);
+    bool found = false;
+    for (int i = 0; i < r && !found; ++i)
+    {
+        //std::cout << "CAP(" << i << "): " << str << std::endl;
+        auto str = reg.Cap(i);
+        if (IsNSID(str) && str != mRootAuth.mUserNSID)
+        {
+            mUrlGetExchange.string = str;
+            found = true;
+        }
+    }
+
+    LF::re::RegExp reg2("albumId_([0-9]*)_");
+    int r2 = reg2.FindAll(resp);
+    found = false;
+    for (int i = 0; i < r2 && !found; ++i)
+    {
+        auto str = reg2.Cap(i);
+        if (std::all_of(str.begin(), str.end(), [](char ch) { return std::isdigit(ch); }))
+        {
+            //std::cout << "CAP(" << i << "): " << str << std::endl;
+            mUrlGetExchange.string2 = str;
+            found = true;
+        }
+    }
+}
+
 void LF::Flickrd2::LoadApiKey()
 {
     STATE(InternalState_t::LoadApiKey);
@@ -309,7 +464,7 @@ void LF::Flickrd2::LoadApiKey()
     
     GetData* data = new GetData();
     data->mGet = mGet;
-    
+    //mGet->SetLogging(true, true);
     CONNECT(mGet->REQUEST_COMPLETE, Flickrd2, OnRequestComplete, this);
     mGet->Get("https://www.flickr.com/", true, data);
 }
@@ -380,23 +535,30 @@ void LF::Flickrd2::ListUsersAlbums(const std::string& userName)
     }
 }
 
-void LF::Flickrd2::ListUserAlbumPhotos(const std::string& userName, const std::string& albumName)
+LF::PhotoList LF::Flickrd2::ListUserAlbumPhotos(const std::string& userName, const std::string& albumName)
 {
+    PhotoList retList;
+
     std::string nsid = GetUsersNSID(userName);
     if (nsid.empty())
     {
         // TODO: warning
-        return;
+        SERR("NSID is empty");
+        return retList;
     }
     std::string albumID = GetUsersAlbumId(nsid, albumName);
     SDEB("Album ID: %s", albumID.c_str());
 
-    STATE(InternalState_t::LoadAlbumPhotos);
+    STATE(InternalState_t::LoadAlbumPhotos) retList;
 
     if (!albumID.empty() && mRootAuth.mSignedIn)
     {
         std::stringstream request;
         request << "https://api.flickr.com/services/rest?" << "method=flickr.photosets.getPhotos" << "&format=rest&csrf=" << mRootAuth.mCSRF << "&api_key=" << mRootAuth.mAppKey << "&photoset_id=" << albumID;
+
+        // extras
+        request << "&extras=url_3k,url_4k,url_o,url_l";
+
         if (!nsid.empty())
         {
             request << "&user_id=" << nsid;
@@ -415,16 +577,78 @@ void LF::Flickrd2::ListUserAlbumPhotos(const std::string& userName, const std::s
             GetData* data = new GetData();
             data->mGet = mGet;
             data->mNSID = nsid;
+            data->mAlbumId = albumID;
             std::stringstream currentRequest;
             currentRequest << request.str() << "&page=" << mUrlGetExchange.number;
             data->mRequest = currentRequest.str();
             mGet->Get(currentRequest.str(), true, data);
         } while (mUrlGetExchange.number);
+
+        auto& d = mAlbumId2Photos[albumID];
+        retList.SetDoc(d);
+
+        return retList;
     }
     else
     {
         SWARN("ListUserAlbumPhotos: User not signed in.");
     }
+    return retList;
+}
+
+LF::PhotoList LF::Flickrd2::ListUserPhotos(const std::string& userName)
+{
+    PhotoList retList;
+
+    std::string nsid = GetUsersNSID(userName);
+    if (nsid.empty())
+    {
+        // TODO: warning
+        SERR("NSID is empty");
+        return retList;
+    }
+
+    STATE(InternalState_t::LoadAllPhotos) retList;
+
+    if (mRootAuth.mSignedIn)
+    {
+        std::stringstream request;
+        request << "https://api.flickr.com/services/rest?" << "method=flickr.people.getPhotos" << "&format=rest&csrf=" << mRootAuth.mCSRF << "&api_key=" << mRootAuth.mAppKey;
+
+        // extras
+        request << "&extras=url_3k,url_4k,url_o,url_l";
+
+        if (!nsid.empty())
+        {
+            request << "&user_id=" << nsid;
+        }
+
+        mGet = std::make_shared<LF::www::UrlGet>();
+
+        mGet->SetCookies(mCookies);
+        CONNECT(mGet->REQUEST_COMPLETE, Flickrd2, OnRequestComplete, this);
+
+        mUrlGetExchange.number = 1;
+        do
+        {
+            GetData* data = new GetData();
+            data->mGet = mGet;
+            data->mNSID = nsid;
+            //data->mAlbumId = albumID;
+            std::stringstream currentRequest;
+            currentRequest << request.str() << "&page=" << mUrlGetExchange.number;
+            data->mRequest = currentRequest.str();
+            mGet->Get(currentRequest.str(), true, data);
+        } while (mUrlGetExchange.number);
+
+        auto& d = mUserId2Photos[nsid];
+        retList.SetDoc(d);
+
+        return retList;
+    }
+
+
+    return retList;
 }
 
 std::string LF::Flickrd2::GetUsersNSID(const std::string& userName)
@@ -434,8 +658,7 @@ std::string LF::Flickrd2::GetUsersNSID(const std::string& userName)
         return userName;
     }
 
-    std::regex pattern("[0-9]+@N[0-9]{2}");
-    if (std::regex_match(userName, pattern))
+    if (IsNSID(userName))
     {
         SINFO("%s is already an NSID", userName.c_str());
         return userName;
@@ -510,8 +733,19 @@ void LF::Flickrd2::FixFlickrFolder(std::string path)
             SINFO("Fix %s -> %s", userId.c_str(), nsid.c_str());
             if (!nsid.empty())
             {
-                flickr.child("flickrd").child("task").attribute("nsid").set_value(nsid.c_str());
-                LoadUserInfo(nsid);
+                //flickr.child("flickrd").child("task").attribute("nsid").set_value(nsid.c_str());
+                pugi::xml_document* info = LoadUserInfo(nsid);
+                if (info)
+                {
+                    flickr.child("flickrd").child("task").append_attribute("nsid").set_value(nsid.c_str());
+                    flickr.child("flickrd").child("task").append_attribute("username").set_value(info->child("rsp").child("person").child_value("username"));
+                    flickr.child("flickrd").child("task").append_attribute("realname").set_value(info->child("rsp").child("person").child_value("realname"));
+                    flickr.child("flickrd").child("task").remove_attribute("userId");
+                    flickr.child("flickrd").child("task").remove_attribute("userName");
+                    std::stringstream ss;
+                    flickr.save(ss);
+                    SDEB(ss.str().c_str());
+                }
             }
             return true;
         }
@@ -547,6 +781,136 @@ void LF::Flickrd2::FixFlickrFolder(std::string path)
     }
 }
 
+bool LF::Flickrd2::SetFlickrFolder(std::string path)
+{
+    auto listFolderJobs = [](LF::fs::Directory& dir)
+    {
+        auto subdirs = dir.GetSubdirs();
+        for (auto& sd : subdirs)
+        {
+            if (sd.Type == LF::fs::FileSystemElement::Directory)
+            {
+                
+            }
+        }
+    };
+
+    mFlickrdDirectory.mValid = false;
+    if (mFlickrdDirectory.mDir.CD(path))
+    {
+
+    }
+    return mFlickrdDirectory.mValid;
+}
+
+LF::JOB LF::Flickrd2::GetFlickrJob(std::string jobFile)
+{
+    bool ok = false;
+    bool isPath = false;
+    std::string pathDir;
+    pugi::xml_document flickr;
+    if (!flickr.load_string(jobFile.c_str()))
+    {
+        std::string path = jobFile;
+        LF::fs::File f(path);
+        if (f.Exists() && f.Open())
+        {
+            if (flickr.load_string(f.GetAsString().c_str()))
+            {
+                SINFO("LOADED JOB from path: %s", jobFile.c_str());
+                isPath = true;
+                pathDir = f.GetDirectoryPath();
+                ok = true;
+            }
+            else
+            {
+                SERR("Cant load JOB");
+            }
+        }
+    }
+    else
+    {
+        ok = true;
+        SINFO("LOADED JOB from string");
+    }
+
+    if (ok)
+    {
+        LF::JOB job;
+        auto task = flickr.child("flickrd").child("task");
+        job.mUserNsid = task.attribute("userId").as_string();
+        if (task.attribute("type").as_string() == std::string("album"))
+        {
+            job.mAlbumId = task.attribute("albumId").as_string();
+        }
+        if (!IsNSID(job.mUserNsid))
+        {
+            job.mUserNsid = GetUsersNSID(job.mUserNsid);
+        }
+        job.mValid = IsNSID(job.mUserNsid);
+        if (isPath)
+        {
+            job.mPath = pathDir;
+        }
+        return job;
+    }
+
+    return LF::JOB();
+}
+
+LF::JOB LF::Flickrd2::GetFlickrJobFromUser(std::string username, std::string albumName)
+{
+    LF::JOB j;
+    j.mUserNsid = GetUsersNSID(username);
+    j.mValid = IsNSID(j.mUserNsid);
+    return j;
+}
+
+LF::JOB LF::Flickrd2::GetFlickrJobFromUrl(std::string url)
+{
+    LF::JOB job;
+    LF::www::Url u(url);
+    if (u.IsValid() && u.GetHostname() == "flickr.com")
+    {
+        STATE(InternalState_t::GetJOBfromUrl) job;
+
+        mUrlGetExchange.Reset();
+        mGet = std::make_shared<LF::www::UrlGet>();
+
+        mGet->SetCookies(mCookies);
+        GetData* data = new GetData();
+        data->mGet = mGet;
+        SINFO("REQ: %s", url.c_str());
+        CONNECT(mGet->REQUEST_COMPLETE, Flickrd2, OnRequestComplete, this);
+        mGet->Get(url, true, data);
+
+        job.mUserNsid = mUrlGetExchange.string;
+        job.mAlbumId = mUrlGetExchange.string2;
+        job.mValid = IsNSID(job.mUserNsid);
+    }
+    return job;
+}
+
+LF::PhotoList LF::Flickrd2::ParseJob(const JOB& job)
+{
+    if (job.mValid)
+    {
+        if (job.mAlbumId.empty()) // stream
+        {
+            return ListUserPhotos(job.mUserNsid);
+        }
+        else
+        {
+            return ListUserAlbumPhotos(job.mUserNsid, job.mAlbumId);
+        }
+    }
+    else
+    {
+        SERR("JOB invalid");
+    }
+    return PhotoList();
+}
+
 std::string LF::Flickrd2::GetUsersAlbumId(const std::string& nsid, const std::string& albumName)
 {
     if (mContacts.mNSID2AlbumList.find(nsid) != mContacts.mNSID2AlbumList.end())
@@ -555,7 +919,7 @@ std::string LF::Flickrd2::GetUsersAlbumId(const std::string& nsid, const std::st
         auto& doc = mContacts.mNSID2AlbumList.find(nsid)->second;
         for (auto& ps : doc.child("rsp").child("photosets").children("photoset"))
         {
-            if (ps.child_value("title") == albumName)
+            if (ps.child_value("title") == albumName || ps.attribute("id").as_string() == albumName)
             {
                 return ps.attribute("id").as_string();
             }
@@ -568,7 +932,7 @@ std::string LF::Flickrd2::GetUsersAlbumId(const std::string& nsid, const std::st
         auto& doc = mContacts.mNSID2AlbumList.find(nsid)->second;
         for (auto& ps : doc.child("rsp").child("photosets").children("photoset"))
         {
-            if (ps.child_value("title") == albumName)
+            if (ps.child_value("title") == albumName || ps.attribute("id").as_string() == albumName)
             {
                 return ps.attribute("id").as_string();
             }
@@ -641,6 +1005,8 @@ void LF::Flickrd2::SetState(InternalState_t state)
             return "ListAlbums";
         case InternalState_t::LoadAlbumPhotos:
             return "LoadAlbumPhotos";
+        case InternalState_t::LoadAllPhotos:
+            return "LoadAllPhotos";
         default:
         {
             std::stringstream ss;

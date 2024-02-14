@@ -154,6 +154,14 @@
     <ClInclude Include="..\Common\Utils\UrlGet\url.h" />
     <ClInclude Include="..\Common\Utils\UrlGet\urlget.h" />
     <ClInclude Include="flickrd2lib.h" />
+    <ClInclude Include="resource.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Flickrd2.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="resources\icon1.ico" />
+    <Image Include="resources\icon1.png" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
