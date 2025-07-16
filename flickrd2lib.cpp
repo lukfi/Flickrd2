@@ -1205,12 +1205,19 @@ void LF::Flickrd2::SetState(InternalState_t state)
 //    };
 //}
 
+LF::PhotoDownloader::PhotoDownloader(PhotoList& list, std::shared_ptr<NetworkCookies> cookies) :
+    mList(list),
+    mCookies(cookies)
+{
+    SINFO("PhotoDownloader set %d cookies", mCookies ? mCookies->Get().size() : 0);
+}
+
 void LF::PhotoDownloader::Download(std::string photosDir)
 {
     //SINFO("%s\n%s\n%s\n%s", mList.GetNSID().c_str(), mList.GetUserName().c_str(), mList.GetAlbumId().c_str(), mList.GetAlbumName().c_str());
     auto urls = mList.GetUrlsToLargestPhotos();
 
-    LF::www::UrlGetDownload d;
+    LF::www::UrlGetDownload d("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0", mCookies);
     int i = 0;
     for (auto& url : urls)
     {

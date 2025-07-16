@@ -138,11 +138,11 @@ private:
 class PhotoDownloader
 {
 public:
-    PhotoDownloader(PhotoList& list) : mList(list)
-    {}
+    PhotoDownloader(PhotoList& list, std::shared_ptr<NetworkCookies> cookies = nullptr);
     void Download(std::string homeDir);
 private:
     PhotoList& mList;
+    std::shared_ptr<NetworkCookies> mCookies;
 };
 
 class Flickrd2
@@ -155,6 +155,9 @@ public:
     void LoadApiKey();
     void ListFriendUsers();
     void ListUsersAlbums(const std::string& userName = "");
+
+    std::shared_ptr<NetworkCookies> GetCookies() const { return mCookies; }
+
     PhotoList ListUserAlbumPhotos(const std::string& userName, const std::string& albumName);
     PhotoList ListUserPhotos(const std::string& userName);
     std::string GetUsersNSID(const std::string& userName = "");
