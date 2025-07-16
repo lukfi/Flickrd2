@@ -6,6 +6,7 @@
 
 int main(int argc, char *argv[])
 {
+    SINFO("ver.: 1.1");
     std::string homeDir = LF::fs::Directory::GetCurrentDir();
     //SDEB(homeDir.c_str());
     //SDEB(argv[0]);
@@ -13,7 +14,7 @@ int main(int argc, char *argv[])
     LF::Flickrd2 f2;
     LF::JOB j;
 
-    f2.LoadCookies(LF::Browser_t::Firefox);
+    f2.LoadCookies(LF::Browser_t::Vivaldi);
     f2.LoadApiKey();
     f2.ListFriendUsers();
 
@@ -55,32 +56,36 @@ int main(int argc, char *argv[])
     if (!j.Valid())
     {
         SERR("No valid flickr job found.");
+        system("pause");
         return -1;
     }
 
+    SINFO(j.ToString().c_str());
     LF::PhotoList photostream = f2.ParseJob(j);
-    printf(">>>>> %d photos %llu urls %s\n", photostream.Count(), photostream.GetUrlsToLargestPhotos().size(), photostream.GetAlbumName().c_str());
+
+    SINFO("Photos info: %s (%s): %d photos", photostream.GetUserName().c_str(), (photostream.GetAlbumName().empty() ? "stream" : photostream.GetAlbumName().c_str()), photostream.Count());
     system("pause");
     //f2.SetFlickrFolder("D:/fd");
-    auto urls = photostream.GetUrlsToLargestPhotos();
-    LF::www::UrlGetDownload d;
-    int i = 0;
-    for (auto& url : urls)
+
+    std::string photosDir;
+
+    if (j.GetPath().empty())
     {
         std::stringstream ss;
-        ss << homeDir << "/" + photostream.GetUserName() << "/" << photostream.GetAlbumName() + "/" << url.mName << ".jpeg";
-        SDEB("Downloading: %s", ss.str().c_str());
-        if (LF::fs::File::Exists(ss.str()))
+        ss << homeDir << "/" + photostream.GetUserName() << "/";
+        if (!photostream.GetAlbumName().empty())
         {
-            SDEB("File exists: %s", ss.str().c_str());
-            continue;
+            ss << photostream.GetAlbumName();
         }
-
-        while (!d.Download(url.mUrl, ss.str()))
-        {
-            d.WaitForAll();
-        }
+        photosDir = ss.str();
     }
-    d.WaitForAll();
+    else
+    {
+        photosDir = j.GetPath();
+    }
+
+    LF::PhotoDownloader downloader(photostream);
+    downloader.Download(photosDir);
+    system("pause");
     return 0;
 }

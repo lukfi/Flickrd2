@@ -26,6 +26,7 @@ public:
     JOB() {};
 
     bool Valid() const { return mValid; }
+    const std::string& GetPath() const { return mPath; }
     std::string ToString()
     {
         std::stringstream ss;
@@ -54,11 +55,13 @@ private:
 class PhotoInfo
 {
 public:
-    PhotoInfo(std::string& url, std::string& name) :
+    PhotoInfo(std::string& url, std::string& name, std::string& filename) :
         mUrl(url),
-        mName(name) {}
+        mName(name),
+        mFilename(filename){}
     std::string mUrl;
     std::string mName;
+    std::string mFilename;
 };
 
 class PhotoList
@@ -74,16 +77,26 @@ public:
 
         for (pugi::xml_node c = mDoc.child("rsp").child(childNodeName).child("photo"); c; c = c.next_sibling("photo"))
         {
-            std::string sizeStr[] = {"4k", "3k", "o", "l"};
-            for (int i = 1; i < sizeof(sizeStr) / sizeof(std::string); ++i)
+            std::string sizeStr[] = { "6k", "5k", "4k", "3k", "o", "k", "h", "l"};
+            for (int i = 0; i < sizeof(sizeStr) / sizeof(std::string); ++i)
             {
                 std::stringstream ss;
                 ss << "url_" << sizeStr[i];
                 std::string url = c.attribute(ss.str().c_str()).as_string();
                 std::string name = c.attribute("id").as_string();
+                std::string filename;
+                for (int i = url.size() - 1; i >= 0; --i)
+                {
+                    if (url.at(i) == '/')
+                    {
+                        filename = url.substr(i + 1);
+                        break;
+                    }
+                }
                 if (!url.empty())
                 {
-                    ret.push_back({ url, name});
+                    //std::cout << url << " : " << filename << std::endl;
+                    ret.push_back({url, name, filename});
                     break;
                 }
             }
@@ -94,13 +107,17 @@ public:
     {
         return mCount;
     }
+    std::string GetAlbumId() const { return mAlbumId; }
     std::string GetAlbumName() const { return mAlbumName; }
     std::string GetUserName() const { return mUserName; }
+    std::string GetNSID() const { return mNSID; }
+
 private:
     void SetDoc(pugi::xml_document& doc)
     {
         mDoc.reset(doc);
-
+        //mDoc.save(std::cout);
+        mAlbumId = mDoc.child("rsp").child("photoset").attribute("id").as_string();
         mAlbumName = mDoc.child("rsp").child("photoset").attribute("title").as_string();
         bool isAlbum = !mAlbumName.empty();
         auto childNodeName = isAlbum ? "photoset" : "photos";
@@ -109,12 +126,23 @@ private:
         mUserName = mDoc.child("rsp").child(childNodeName).attribute("ownername").as_string();
     }
     pugi::xml_document mDoc;
+    std::string mAlbumId;
     std::string mAlbumName;
     std::string mNSID;
     std::string mUserName;
     uint32_t mCount{ 0 };
 
     friend class Flickrd2;
+};
+
+class PhotoDownloader
+{
+public:
+    PhotoDownloader(PhotoList& list) : mList(list)
+    {}
+    void Download(std::string homeDir);
+private:
+    PhotoList& mList;
 };
 
 class Flickrd2
@@ -139,6 +167,8 @@ public:
     JOB GetFlickrJobFromUrl(std::string url);
 
     PhotoList ParseJob(const JOB& job);
+
+    static bool CreateProjectFile(pugi::xml_document&, const std::string& nsid, const std::string& username, const std::string& albumId = "", const std::string& albumName = "");
 private:
     std::string GetUsersAlbumId(const std::string& nsid, const std::string& albumName);
     pugi::xml_document* LoadUserInfo(const std::string& nsid);
@@ -227,6 +257,9 @@ private:
     void SetState(InternalState_t state);
     std::mutex mStateLock;
     std::atomic<InternalState_t> mState;
+
+    bool mVerbose{ true };
+    bool mQuiet{ false };
 
     struct
     {
